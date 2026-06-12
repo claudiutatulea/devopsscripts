@@ -1,0 +1,284 @@
+name: Deployment Pipeline
+
+on:
+  push:
+    branches: [main, dev, qa]
+  pull_request:
+    branches: [main, dev, qa]
+  workflow_call:   # allows other repos in the org to call this pipeline
+
+env:
+  DOCKER_REGISTRY: ghcr.io
+  DOCKER_IMAGE: ${{ github.repository }}
+  TF_DIR: terraform
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  # ── 0. Setup — detect environment from branch ─────────────────────────────
+  #
+  #   Branch mapping:
+  #     main  →  production
+  #     qa    →  qa
+  #     dev   →  development
+  #
+  #   is_deploy = true only on push events (not PRs).
+  #   PRs run CI/test jobs but never deploy.
+  # ─────────────────────────────────────────────────────────────────────────
+  setup:
+    name: Setup
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.detect.outputs.environment }}
+      tf_vars_file: ${{ steps.detect.outputs.tf_vars_file }}
+      is_deploy: ${{ steps.detect.outputs.is_deploy }}
+    steps:
+      - name: Detect environment
+        id: detect
+        run: |
+          # For push events use ref_name; for PRs use base_ref (target branch)
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            BRANCH="${{ github.ref_name }}"
+            IS_DEPLOY="true"
+          else
+            BRANCH="${{ github.base_ref }}"
+            IS_DEPLOY="false"
+          fi
+
+          case "$BRANCH" in
+            main) ENV=production  ;;
+            qa)   ENV=qa          ;;
+            dev)  ENV=development ;;
+            *)    ENV=development ;;
+          esac
+
+          echo "environment=$ENV"                            >> "$GITHUB_OUTPUT"
+          echo "tf_vars_file=terraform/envs/${ENV}.tfvars"  >> "$GITHUB_OUTPUT"
+          echo "is_deploy=$IS_DEPLOY"                       >> "$GITHUB_OUTPUT"
+
+          echo "Branch: $BRANCH  →  environment: $ENV  (deploy: $IS_DEPLOY)"
+
+  # ── 1. Init ───────────────────────────────────────────────────────────────
+  init:
+    name: Init
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run init
+        run: bash scripts/init.sh
+        env:
+          ENVIRONMENT: ${{ needs.setup.outputs.environment }}
+
+  # ── 2. Static Analysis ────────────────────────────────────────────────────
+  static-analysis:
+    name: Static Analysis
+    runs-on: ubuntu-latest
+    needs: [setup, init]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run static analysis
+        run: bash scripts/static-analysis.sh
+
+  # ── 3. Lint & Unit Tests ──────────────────────────────────────────────────
+  lint-unit-tests:
+    name: Lint & Unit Tests
+    runs-on: ubuntu-latest
+    needs: [setup, static-analysis]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run lint
+        run: bash scripts/lint.sh
+      - name: Run unit tests
+        run: bash scripts/unit-tests.sh
+
+  # ── 4. Terraform Validate (parallel path from init) ───────────────────────
+  terraform-validate:
+    name: Terraform Validate
+    runs-on: ubuntu-latest
+    needs: [setup, init]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.9"
+      - name: Run terraform validate
+        run: bash scripts/terraform-validate.sh
+        env:
+          TF_DIR: ${{ env.TF_DIR }}
+
+  # ── 5. Terraform Test ─────────────────────────────────────────────────────
+  terraform-test:
+    name: Terraform Test
+    runs-on: ubuntu-latest
+    needs: [setup, terraform-validate]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.9"
+      - name: Run terraform tests
+        run: bash scripts/terraform-test.sh
+        env:
+          TF_DIR: ${{ env.TF_DIR }}
+
+  # ── 6. Build (pre-build setup) ────────────────────────────────────────────
+  build:
+    name: Build Setup
+    runs-on: ubuntu-latest
+    needs: [setup, lint-unit-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run build setup
+        run: bash scripts/build.sh
+
+  # ── 7. Build Application ──────────────────────────────────────────────────
+  build-app:
+    name: Build Application
+    runs-on: ubuntu-latest
+    needs: [setup, build]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build application
+        run: bash scripts/build-app.sh
+        env:
+          ENVIRONMENT: ${{ needs.setup.outputs.environment }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-artifact
+          path: dist/
+          retention-days: 1
+
+  # ── 8. Build Docker Image ─────────────────────────────────────────────────
+  build-docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: [setup, build-app]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-artifact
+          path: dist/
+      - name: Build docker image
+        run: bash scripts/build-docker.sh
+        env:
+          DOCKER_REGISTRY: ${{ env.DOCKER_REGISTRY }}
+          DOCKER_IMAGE: ${{ env.DOCKER_IMAGE }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          ENVIRONMENT: ${{ needs.setup.outputs.environment }}
+      - name: Save docker image
+        run: docker save "${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE }}:${{ env.IMAGE_TAG }}" | gzip > image.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: image.tar.gz
+          retention-days: 1
+
+  # ── 9. Scan Docker Image ──────────────────────────────────────────────────
+  scan-docker:
+    name: Scan Docker Image
+    runs-on: ubuntu-latest
+    needs: [setup, build-docker]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: .
+      - name: Load docker image
+        run: docker load < image.tar.gz
+      - name: Scan docker image
+        run: bash scripts/scan-docker.sh
+        env:
+          DOCKER_REGISTRY: ${{ env.DOCKER_REGISTRY }}
+          DOCKER_IMAGE: ${{ env.DOCKER_IMAGE }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+
+  # ── 10. Publish Docker Image ──────────────────────────────────────────────
+  #   Runs only on push to main / qa / dev (not on PRs).
+  #   Tags the image with both the git SHA and the environment name.
+  # ─────────────────────────────────────────────────────────────────────────
+  publish-docker:
+    name: Publish Docker Image
+    runs-on: ubuntu-latest
+    needs: [setup, scan-docker]
+    if: needs.setup.outputs.is_deploy == 'true'
+    permissions:
+      packages: write   # required to push to ghcr.io with GITHUB_TOKEN
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: .
+      - name: Load docker image
+        run: docker load < image.tar.gz
+      - name: Publish docker image
+        run: bash scripts/publish-docker.sh
+        env:
+          DOCKER_REGISTRY: ${{ env.DOCKER_REGISTRY }}
+          DOCKER_IMAGE: ${{ env.DOCKER_IMAGE }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          ENVIRONMENT: ${{ needs.setup.outputs.environment }}
+          REGISTRY_USERNAME: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── 11. Terraform Plan ────────────────────────────────────────────────────
+  terraform-plan:
+    name: Terraform Plan (${{ needs.setup.outputs.environment }})
+    runs-on: ubuntu-latest
+    needs: [setup, terraform-test, publish-docker]
+    if: |
+      always() &&
+      needs.setup.outputs.is_deploy == 'true' &&
+      needs.terraform-test.result == 'success' &&
+      needs.publish-docker.result == 'success'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.9"
+      - name: Run terraform plan
+        run: bash scripts/terraform-plan.sh
+        env:
+          TF_DIR: ${{ env.TF_DIR }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          ENVIRONMENT: ${{ needs.setup.outputs.environment }}
+          TF_VARS_FILE: ${{ needs.setup.outputs.tf_vars_file }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: ${{ env.TF_DIR }}/tfplan
+          retention-days: 1
+
+  # ── 12. Terraform Apply ───────────────────────────────────────────────────
+  #   Runs on all three deploy branches.
+  #   The GitHub environment gate (required reviewers, wait timers) is
+  #   configured per-environment in repo Settings → Environments.
+  #   Recommended: add a required reviewer for production.
+  # ─────────────────────────────────────────────────────────────────────────
+  terraform-apply:
+    name: Terraform Apply (${{ needs.setup.outputs.environment }})
+    runs-on: ubuntu-latest
+    needs: [setup, terraform-plan]
+    if: |
+      always() &&
+      needs.setup.outputs.is_deploy == 'true' &&
+      needs.terraform-plan.result == 'success'
+    environment:
+      name: ${{ needs.setup.outputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.9"
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: ${{ env.TF_DIR }}
+      - name: Run terraform apply
+        run: bash scripts/terraform-apply.sh
+        env:
+          TF_DIR: ${{ env.TF_DIR }}
+          ENVIRONMENT: ${{ needs.setup.outputs.environment }}
