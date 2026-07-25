@@ -1,8 +1,4 @@
-environment = "development"
-app_name    = "app"
-
-# Development-specific values:
-# instance_count    = 1
-# instance_type     = "t3.micro"
-# enable_autoscaling = false
-# log_retention_days = 7
+project_name = "terraform-starter"
+environment  = "development"
+aws_region   = "eu-west-1"
+admin_cidr   = "0.0.0.0/0"
