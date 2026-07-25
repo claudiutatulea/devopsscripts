@@ -199,7 +199,7 @@ resource "aws_instance" "web" {
   instance_type          = var.instance_type
   subnet_id              = aws_subnet.private[count.index].id
   vpc_security_group_ids = [aws_security_group.web.id]
-  user_data              = base64encode(<<-EOF
+  user_data = base64encode(<<-EOF
     #!/bin/bash
     set -eux
     apt-get update
@@ -221,7 +221,7 @@ resource "aws_instance" "web" {
 }
 
 resource "aws_lb" "app" {
-  name               = "${var.project_name}-${var.environment}-alb"
+  name               = substr("${var.project_name}-${var.environment}-alb", 0, 32)
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
@@ -233,10 +233,10 @@ resource "aws_lb" "app" {
 }
 
 resource "aws_lb_target_group" "web" {
-  name     = "${var.project_name}-${var.environment}-tg"
-  port     = 80
-  protocol = "HTTP"
-  vpc_id   = aws_vpc.main.id
+  name        = substr("${var.project_name}-${var.environment}-tg", 0, 32)
+  port        = 80
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
   target_type = "instance"
 
   health_check {

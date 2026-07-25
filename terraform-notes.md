@@ -423,5 +423,181 @@ The next step after this would be:
 2. install Apache and PHP on them
 3. attach them to the load balancer
 
-If you want, I can now guide you through the next step in the same style:
-- how to add the two web servers to Terraform.
+## Next step: deploy it to AWS
+
+At this point, the repo already contains a starter Terraform layout for your target architecture:
+- one VPC
+- public and private subnets
+- an internet gateway and NAT gateway
+- security groups
+- two Ubuntu web servers
+- one application load balancer
+
+That means the next thing to learn is not just the syntax, but the deployment workflow.
+
+### 1. Prepare AWS access
+
+Before Terraform can create anything in AWS, you need credentials.
+
+The simplest learning-friendly option is to create an AWS IAM user with enough permissions for this exercise, such as:
+- AmazonEC2FullAccess
+- AmazonVPCFullAccess
+- ElasticLoadBalancingFullAccess
+- IAMReadOnlyAccess
+
+For a quick lab, many people use an administrator-level key temporarily, but it is better to keep the permissions as narrow as possible.
+---------------------------------------------
+#### Option A — use the AWS CLI interactively
+
+Run:
+
+```bash
+aws configure
+```
+
+It will ask for:
+- AWS Access Key ID
+- AWS Secret Access Key
+- Default region name, for example `eu-north-1`
+- Default output format, for example `json`
+
+These values are stored in:
+
+```bash
+~/.aws/credentials
+~/.aws/config
+```
+
+#### Option B — export them in the current shell
+
+If you do not want to store them in the AWS config files, you can export them for the current terminal session:
+
+```bash
+export AWS_ACCESS_KEY_ID="your-key"
+export AWS_SECRET_ACCESS_KEY="your-secret"
+export AWS_DEFAULT_REGION="eu-north-1"
+```
+
+You can verify that Terraform sees them with:
+
+```bash
+aws sts get-caller-identity
+```
+
+If that command works, your credentials are valid.
+
+#### Option C — use AWS profile names
+
+If you prefer profiles, create one like this:
+
+```bash
+aws configure --profile devops
+```
+
+Then use it in Terraform or export it:
+
+```bash
+export AWS_PROFILE=devops
+export AWS_DEFAULT_REGION=eu-north-1
+```
+
+### 2. Initialize Terraform
+
+From the repository root, run:
+
+```bash
+terraform -chdir=terraform init -backend=false -input=false
+```
+
+This downloads the AWS provider and prepares the working directory.
+
+### 3. Validate the configuration
+
+```bash
+terraform -chdir=terraform validate
+```
+
+If this succeeds, your Terraform syntax and configuration structure are correct.
+
+### 4. Preview the deployment plan
+
+```bash
+terraform -chdir=terraform plan -var-file=envs/development.tfvars -input=false
+```
+
+This is the most important learning step because it shows exactly what Terraform intends to create before it changes anything.
+
+### 5. Apply the plan
+
+```bash
+terraform -chdir=terraform apply -var-file=envs/development.tfvars -input=false
+```
+
+Terraform will ask for confirmation. Type:
+
+```bash
+yes
+```
+
+### 6. Inspect the outputs
+
+After apply, Terraform will print useful values such as the load balancer DNS name.
+
+You can also print them later with:
+
+```bash
+terraform -chdir=terraform output
+```
+
+### 7. Open the application
+
+The load balancer DNS name is the public entry point for your site.
+
+Run:
+
+```bash
+terraform -chdir=terraform output alb_dns_name
+```
+
+Then open that address in your browser. You should see the simple PHP page served by Apache on the web servers behind the load balancer.
+
+## How this repo automates the same flow
+
+The repository already contains helper scripts that wrap these same steps:
+- scripts/terraform-plan.sh
+- scripts/terraform-apply.sh
+
+They are designed to be used by the CI/CD pipeline, but you can also run them locally.
+
+## What you should learn from this step
+
+When you finish this deployment, you should understand that Terraform works in three phases:
+1. read the configuration
+2. create an execution plan
+3. apply the changes to AWS
+
+That is the core mental model for infrastructure as code.
+
+## Common errors you may see
+
+### No valid credential sources found
+
+This means AWS credentials are not configured. Fix it by running `aws configure` or exporting the environment variables above.
+
+### Invalid CIDR or subnet overlap
+
+This usually happens when the subnet ranges conflict with each other. Make sure the VPC and subnets are in distinct ranges.
+
+### Load balancer health check fails
+
+This usually means the web servers did not finish installing Apache and PHP successfully. Check the instance user data and the security group rules.
+
+## Recommended next learning step
+
+The next thing to study is how the web servers are configured in Terraform. Focus on:
+- the EC2 user data script
+- the security group rules
+- the target group and listener
+
+If you want, I can continue the walkthrough with the next lesson:
+- how the two Ubuntu web servers are created and provisioned step by step.
