@@ -601,3 +601,32 @@ The next thing to study is how the web servers are configured in Terraform. Focu
 
 If you want, I can continue the walkthrough with the next lesson:
 - how the two Ubuntu web servers are created and provisioned step by step.
+
+## New: VPC tutorial (small, repeatable steps)
+
+I created a minimal VPC module under `terraform/vpc` so you can learn incrementally.
+
+- What it creates: VPC, two public subnets, an Internet Gateway, and a public route table.
+- Where the code is: `terraform/vpc/main.tf`, `terraform/vpc/variables.tf`, `terraform/vpc/outputs.tf`.
+- Environment values: `terraform/envs/vpc-development.tfvars`.
+- Destroy helper: `scripts/vpc-destroy.sh` (safe wrapper around `terraform destroy`).
+
+Run these commands from the repository root to try it yourself (no `apply` required until you're ready):
+
+```bash
+# initialise the module (downloads providers)
+terraform -chdir=terraform/vpc init -input=false
+
+# preview what will be created (uses the dev tfvars file)
+terraform -chdir=terraform/vpc plan -var-file=../envs/vpc-development.tfvars -input=false
+
+# when you're ready to create resources, run apply
+terraform -chdir=terraform/vpc apply -var-file=../envs/vpc-development.tfvars -input=false
+
+# to destroy everything created by the module
+bash scripts/vpc-destroy.sh
+```
+
+Cost guidance: this module avoids billable resources (no NAT, no EIP, no EC2, no ALB). Creating a VPC and public subnets is effectively free; you will not incur compute or NAT/EIP costs while testing this module.
+
+CI integration (GitHub Actions): later we can add a job that runs `terraform plan` and uploads the saved plan, and another job for `terraform apply` gated by an environment. For now, run the steps locally until you're comfortable.

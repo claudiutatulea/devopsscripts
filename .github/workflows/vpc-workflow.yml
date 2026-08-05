@@ -1,0 +1,85 @@
+name: VPC Tutorial
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Operation to run: plan, apply, or destroy"
+        required: true
+        default: "plan"
+
+env:
+  TF_DIR: terraform/vpc
+
+jobs:
+  plan:
+    name: Plan VPC
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.9"
+      - name: Terraform init
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: terraform -chdir=${{ env.TF_DIR }} init -input=false
+      - name: Terraform plan
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: |
+          terraform -chdir=${{ env.TF_DIR }} plan \
+            -var-file=../envs/vpc-development.tfvars \
+            -out=tfplan -input=false
+      - name: Upload plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: vpc-tfplan
+          path: ${{ env.TF_DIR }}/tfplan
+
+  apply:
+    name: Apply VPC
+    needs: plan
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.operation == 'apply' }}
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.9"
+      - name: Download plan
+        uses: actions/download-artifact@v4
+        with:
+          name: vpc-tfplan
+          path: ${{ env.TF_DIR }}
+      - name: Terraform apply
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: terraform -chdir=${{ env.TF_DIR }} apply -input=false -auto-approve tfplan
+
+  destroy:
+    name: Destroy VPC
+    needs: plan
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.operation == 'destroy' }}
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.9"
+      - name: Terraform destroy (plan + apply)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: |
+          terraform -chdir=${{ env.TF_DIR }} plan -destroy -var-file=../envs/vpc-development.tfvars -out=tfplan -input=false
+          terraform -chdir=${{ env.TF_DIR }} apply -input=false -auto-approve tfplan
