@@ -27,10 +27,14 @@ Set these repository secrets:
 ## Local init
 
 ```bash
-export TF_VAR_state_bucket=devopsscripts-terraform-state
-export TF_VAR_state_region=eu-west-1
-export TF_VAR_state_table=devopsscripts-terraform-lock
-terraform -chdir=terraform/vpc init
+export TF_STATE_BUCKET=devopsscripts-terraform-state
+export TF_STATE_REGION=eu-west-1
+export TF_STATE_TABLE=devopsscripts-terraform-lock
+terraform -chdir=terraform/vpc init \
+  -backend-config="bucket=${TF_STATE_BUCKET}" \
+  -backend-config="key=vpc/terraform.tfstate" \
+  -backend-config="region=${TF_STATE_REGION}" \
+  -backend-config="dynamodb_table=${TF_STATE_TABLE}"
 ```
 
 ## GitHub Actions
