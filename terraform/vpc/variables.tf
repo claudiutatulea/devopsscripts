@@ -27,3 +27,21 @@ variable "public_subnet_cidrs" {
   type        = list(string)
   default     = ["10.1.1.0/24", "10.1.2.0/24"]
 }
+
+variable "web_port" {
+  description = "Port that the web servers will listen on"
+  type        = number
+  default     = 80
+}
+
+variable "tg_protocol" {
+  description = "Protocol for the target group"
+  type        = string
+  default     = "HTTP"
+}
+
+variable "tg_port" {
+  description = "Port for the target group"
+  type        = number
+  default     = 80
+}
