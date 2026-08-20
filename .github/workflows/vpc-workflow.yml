@@ -8,6 +8,10 @@ on:
         description: "Operation to run: plan, apply, or destroy"
         required: true
         default: "plan"
+      create_https_listener:
+        description: "Create HTTPS listener (true/false). Requires ACM DNS validation."
+        required: false
+        default: "false"
 
 env:
   TF_DIR: terraform/vpc
@@ -44,6 +48,7 @@ jobs:
         run: |
           terraform -chdir=${{ env.TF_DIR }} plan \
             -var-file=../envs/vpc-development.tfvars \
+            -var="create_https_listener=${{ github.event.inputs.create_https_listener }}" \
             -out=tfplan -input=false
       - name: Upload plan
         uses: actions/upload-artifact@v4
@@ -101,6 +106,26 @@ jobs:
         with:
           name: vpc-tfstate
           path: ${{ env.TF_DIR }}/vpc.tfstate.json
+
+      - name: Export Terraform outputs
+        run: terraform -chdir=${{ env.TF_DIR }} output -json > outputs.json || true
+
+      - name: Upload outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: vpc-outputs
+          path: ${{ env.TF_DIR }}/outputs.json
+
+      - name: Smoke test (HTTP)
+        run: |
+          alb=$(terraform -chdir=${{ env.TF_DIR }} output -raw alb_dns_name)
+          echo "ALB DNS: $alb"
+          status=$(curl -s -o /dev/null -w "%{http_code}" http://$alb/)
+          echo "HTTP status: $status"
+          if [ "$status" -ne 200 ]; then
+            echo "Smoke test failed: HTTP $status"
+            exit 1
+          fi
 
   destroy:
     name: Destroy VPC
