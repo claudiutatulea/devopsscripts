@@ -108,6 +108,10 @@ jobs:
           path: ${{ env.TF_DIR }}/vpc.tfstate.json
 
       - name: Export Terraform outputs
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
         run: terraform -chdir=${{ env.TF_DIR }} output -json > outputs.json || true
 
       - name: Upload outputs
@@ -117,6 +121,10 @@ jobs:
           path: ${{ env.TF_DIR }}/outputs.json
 
       - name: Smoke test (HTTP)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
         run: |
           alb=$(terraform -chdir=${{ env.TF_DIR }} output -raw alb_dns_name)
           echo "ALB DNS: $alb"
