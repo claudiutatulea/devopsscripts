@@ -164,7 +164,7 @@ resource "aws_route53_record" "app" {
   zone_id = var.route53_zone_id
   name    = var.domain_name
   type    = "CNAME"
-  ttl     = 60
+  ttl     = 300
   records = [aws_lb.web_alb.dns_name]
 }
 
