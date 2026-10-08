@@ -272,3 +272,16 @@ resource "aws_lb_target_group_attachment" "web" {
   target_id        = aws_instance.web[count.index].id
   port             = 80
 }
+
+resource "aws_route53_record" "app" {
+  zone_id = var.route53_zone_id
+  name    = var.domain_name
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.web_alb.dns_name
+    zone_id                = aws_lb.web_alb.zone_id
+    evaluate_target_health = true
+  }
+}
+
