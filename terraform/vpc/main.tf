@@ -159,6 +159,15 @@ resource "aws_lb" "web_alb" {
   tags = merge(local.common_tags, { Name = "${var.project_name}-${var.environment}-alb" })
 }
 
+resource "aws_route53_record" "app" {
+  count   = var.route53_zone_id == null ? 0 : 1
+  zone_id = var.route53_zone_id
+  name    = var.domain_name
+  type    = "CNAME"
+  ttl     = 60
+  records = [aws_lb.web_alb.dns_name]
+}
+
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.web_alb.arn
   port              = 80

@@ -82,6 +82,12 @@ variable "domain_name" {
   default     = "page.sodeep.link"
 }
 
+variable "route53_zone_id" {
+  description = "Public Route 53 hosted zone ID for the application domain"
+  type        = string
+  default     = null
+}
+
 variable "ami_id" {
   description = "AMI id to use for web servers"
   type        = string
