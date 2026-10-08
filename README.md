@@ -574,3 +574,16 @@ bash scripts/terraform-plan.sh
 | Env-specific sizing | `terraform/envs/*.tfvars` | Set instance counts, types, flags per environment |
 | Remote backend | `terraform/main.tf` | Uncomment and fill in the `backend` block |
 | Private registry | `pipeline.yml` | Update `DOCKER_REGISTRY`; store credentials as secrets and update `REGISTRY_TOKEN` in the `publish-docker` job |
+
+
+
+### how can I check the last run status in git in command line?
+Use GitHub CLI from the repository directory:
+
+gh run list --workflow=vpc-workflow.yml --limit 1
+
+For details on that run, including its job status:
+
+gh run view <run-id> --json status,conclusion,jobs,url
+
+Replace <run-id> with the ID shown by the first command. in_progress means it’s still running; completed with success means it passed.
