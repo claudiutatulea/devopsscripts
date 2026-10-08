@@ -93,6 +93,8 @@ resource "aws_nat_gateway" "gw" {
   allocation_id = aws_eip.nat.id
   subnet_id     = aws_subnet.public[0].id
 
+  depends_on = [aws_route_table_association.public]
+
   tags = merge(local.common_tags, {
     Name = "${var.project_name}-${var.environment}-nat-1"
   })
@@ -155,6 +157,8 @@ resource "aws_lb" "web_alb" {
   load_balancer_type = "application"
   subnets            = aws_subnet.public[*].id
   security_groups    = [aws_security_group.alb_sg.id]
+
+  depends_on = [aws_route_table_association.public]
 
   tags = merge(local.common_tags, { Name = "${var.project_name}-${var.environment}-alb" })
 }
