@@ -99,7 +99,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
-        run: terraform -chdir=${{ env.TF_DIR }} state pull > vpc.tfstate.json || true
+        run: terraform -chdir=${{ env.TF_DIR }} state pull > ${{ env.TF_DIR }}/vpc.tfstate.json || true
 
       - name: Upload state artifact
         uses: actions/upload-artifact@v4
@@ -112,7 +112,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
-        run: terraform -chdir=${{ env.TF_DIR }} output -json > outputs.json || true
+        run: terraform -chdir=${{ env.TF_DIR }} output -json > ${{ env.TF_DIR }}/outputs.json || true
 
       - name: Upload outputs
         uses: actions/upload-artifact@v4
@@ -128,12 +128,20 @@ jobs:
         run: |
           alb=$(terraform -chdir=${{ env.TF_DIR }} output -raw alb_dns_name)
           echo "ALB DNS: $alb"
-          status=$(curl -s -o /dev/null -w "%{http_code}" http://$alb/)
-          echo "HTTP status: $status"
-          if [ "$status" -ne 200 ]; then
-            echo "Smoke test failed: HTTP $status"
-            exit 1
-          fi
+
+          status=""
+          for i in $(seq 1 30); do
+            status=$(curl -sS -o /dev/null -w "%{http_code}" "http://$alb/" || true)
+            echo "Attempt $i: HTTP status: $status"
+            if [ "$status" = "200" ]; then
+              echo "Smoke test passed"
+              exit 0
+            fi
+            sleep 10
+          done
+
+          echo "Smoke test failed: HTTP $status after retries"
+          exit 1
 
   destroy:
     name: Destroy VPC
