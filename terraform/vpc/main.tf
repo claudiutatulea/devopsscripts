@@ -231,7 +231,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 # Fresh bootstrap: install the web server on each instance from scratch.
 apt-get update -y
-apt-get install -y nginx
+apt-get install -y nginx stress-ng
 
 # Remove any preexisting default page and write a simple app page.
 cat > /var/www/html/index.html <<HTML
@@ -254,9 +254,9 @@ EOF
 }
 
 resource "aws_autoscaling_group" "web_asg" {
-  desired_capacity    = var.instance_count
-  max_size            = var.instance_count
-  min_size            = var.instance_count
+  desired_capacity    = var.desired_instance_count
+  max_size            = var.max_instance_count
+  min_size            = var.min_instance_count
   vpc_zone_identifier = aws_subnet.private[*].id
   launch_template {
     id      = aws_launch_template.web_lt.id
@@ -268,6 +268,22 @@ resource "aws_autoscaling_group" "web_asg" {
 
   lifecycle {
     create_before_destroy = true
+    ignore_changes        = [desired_capacity]
+  }
+}
+
+resource "aws_autoscaling_policy" "web_cpu_target" {
+  name                      = "${var.project_name}-${var.environment}-cpu-target"
+  autoscaling_group_name    = aws_autoscaling_group.web_asg.name
+  policy_type               = "TargetTrackingScaling"
+  estimated_instance_warmup = var.instance_warmup_seconds
+
+  target_tracking_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ASGAverageCPUUtilization"
+    }
+
+    target_value = var.cpu_target_utilization
   }
 }
 
@@ -286,10 +302,12 @@ output "alb_dns_name" {
 }
 
 output "instance_asg_ids" {
-  description = "AutoScaling Group name and desired capacity"
+  description = "Auto Scaling Group name and capacity limits"
   value = {
     asg_name = aws_autoscaling_group.web_asg.name
-    desired  = var.instance_count
+    min      = var.min_instance_count
+    desired  = var.desired_instance_count
+    max      = var.max_instance_count
   }
 }
 

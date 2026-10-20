@@ -58,10 +58,34 @@ variable "instance_type" {
   default     = "t3.micro"
 }
 
-variable "instance_count" {
-  description = "Number of EC2 instances to run"
+variable "min_instance_count" {
+  description = "Minimum number of EC2 instances in the Auto Scaling Group"
   type        = number
-  default     = 2
+  default     = 1
+}
+
+variable "desired_instance_count" {
+  description = "Initial desired number of EC2 instances in the Auto Scaling Group"
+  type        = number
+  default     = 1
+}
+
+variable "max_instance_count" {
+  description = "Maximum number of EC2 instances in the Auto Scaling Group"
+  type        = number
+  default     = 3
+}
+
+variable "cpu_target_utilization" {
+  description = "Target average CPU utilization percentage for Auto Scaling"
+  type        = number
+  default     = 50
+}
+
+variable "instance_warmup_seconds" {
+  description = "Time in seconds for a new instance to warm up before scaling evaluation"
+  type        = number
+  default     = 180
 }
 
 variable "private_subnet_cidrs" {
