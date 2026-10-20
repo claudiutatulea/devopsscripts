@@ -587,3 +587,22 @@ For details on that run, including its job status:
 gh run view <run-id> --json status,conclusion,jobs,url
 
 Replace <run-id> with the ID shown by the first command. in_progress means it’s still running; completed with success means it passed.
+
+
+
+
+### how to simulate load on a server to test out autoscaling
+
+url=http://page.sodeep.link/
+end=$((SECONDS + 300))
+
+for worker in {1..5}; do
+  (
+    while (( SECONDS < end )); do
+      curl --fail --silent --show-error --output /dev/null --max-time 5 "$url" || true
+      sleep 0.25
+    done
+  ) &
+done
+
+wait
