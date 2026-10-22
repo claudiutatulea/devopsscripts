@@ -20,3 +20,28 @@ terraform -chdir=terraform/vpc apply -var-file=../envs/vpc-development.tfvars -i
 # destroy when done
 bash scripts/vpc-destroy.sh
 ```
+
+### destroy command
+gh workflow run .github/workflows/vpc-workflow.yml --ref main --field operation=destroy --field create_https_listener=false
+
+### check the run afterwards
+gh run list --workflow=vpc-workflow.yml --limit 1
+
+gh run view <run-id> --json status,conclusion,jobs,url
+
+gh run view <run-id> --log
+
+
+//////
+gh run view 39415095863 --json status,conclusion,jobs,url
+
+gh run view <run-id> --log
+
+
+
+### For example, to install htop on all three VMs:
+```bash
+cd ~/ansible/ansible-project
+ansible-playbook playbooks/install_program.yml -e "package_name=htop" --ask-become-pass
+  ```
+
